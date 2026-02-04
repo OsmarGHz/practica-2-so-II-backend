@@ -16,12 +16,15 @@ interface Proceso {
     color: string;
 }
 
+export type AlgoritmoAsignacion = 'first' | 'next' | 'best' | 'worst';
+
 export class GestorMemoria {
     private memoriaTotal: number;
     private tamanoBloque: number;
     private totalBloques: number;
     private mapaDeBits: Uint32Array; //Unsigned int mapaDeBits[]
     private listaDeProcesos: Proceso[];
+    private ultimoIndiceAsignado: number = 0; // Pointer para Next Fit
 
     constructor(memoriaTotal: number, tamanoBloque: number) {
         this.memoriaTotal = memoriaTotal;
@@ -84,10 +87,80 @@ export class GestorMemoria {
         return -1; //Osea, no hay memoria suficiente
     }
 
-    public crearProceso(nombre: string, tamanoBytes: number, color: string): string {
+    private encontrarNextFit(numBloques: number): number {
+        let contador = 0;
+        let inicio = -1;
+        for (let i = 0; i < this.totalBloques; i++) {
+            const idx = (this.ultimoIndiceAsignado + i) % this.totalBloques;
+            if (!this.checkBit(idx)) {
+                if (contador === 0) inicio = idx;
+                if (++contador === numBloques) {
+                    this.ultimoIndiceAsignado = (inicio + numBloques) % this.totalBloques;
+                    return inicio;
+                }
+            } else {
+                contador = 0;
+                inicio = -1;
+            }
+        }
+        return -1;
+    }
+
+    private encontrarBestFit(numBloques: number): number {
+        let mejorInicio = -1;
+        let mejorTamano = Infinity;
+        let contador = 0;
+        let inicioActual = -1;
+
+        for (let i = 0; i <= this.totalBloques; i++) {
+            const libre = i < this.totalBloques ? !this.checkBit(i) : false;
+            if (libre) {
+                if (contador === 0) inicioActual = i;
+                contador++;
+            } else {
+                if (contador >= numBloques && contador < mejorTamano) {
+                    mejorTamano = contador;
+                    mejorInicio = inicioActual;
+                }
+                contador = 0;
+            }
+        }
+        return mejorInicio;
+    }
+
+    private encontrarWorstFit(numBloques: number): number {
+        let peorInicio = -1;
+        let peorTamano = -1;
+        let contador = 0;
+        let inicioActual = -1;
+
+        for (let i = 0; i <= this.totalBloques; i++) {
+            const libre = i < this.totalBloques ? !this.checkBit(i) : false;
+            if (libre) {
+                if (contador === 0) inicioActual = i;
+                contador++;
+            } else {
+                if (contador >= numBloques && contador > peorTamano) {
+                    peorTamano = contador;
+                    peorInicio = inicioActual;
+                }
+                contador = 0;
+            }
+        }
+        return peorInicio;
+    }
+
+    public crearProceso(nombre: string, tamanoBytes: number, color: string, algoritmo: AlgoritmoAsignacion = 'first'): string {
         if(tamanoBytes <= 0) return this.printLoSentimos("El tamaño debe ser mayor a 0");
         const numBloquesNecesarios = Math.ceil(tamanoBytes / this.tamanoBloque);
-        const indice = this.encontrarEspacioLibre(numBloquesNecesarios);
+        let indice = -1;
+
+        switch (algoritmo) {
+            case 'first': indice = this.encontrarEspacioLibre(numBloquesNecesarios); break;
+            case 'next':  indice = this.encontrarNextFit(numBloquesNecesarios); break;
+            case 'best':  indice = this.encontrarBestFit(numBloquesNecesarios); break;
+            case 'worst': indice = this.encontrarWorstFit(numBloquesNecesarios); break;
+        }
 
         if(indice === -1) {
             return this.printLoSentimos("No hay memoria suficiente (Fragmentación o Memoria Llena)");
